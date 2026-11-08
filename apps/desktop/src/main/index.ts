@@ -30,6 +30,7 @@ import { registerOnboardingIPC } from './ipc/onboarding.ipc'
 import { registerDeveloperIPC } from './ipc/developer.ipc'
 import { registerEmojiIPC } from './ipc/emoji.ipc'
 import { registerCompressionEventBridge } from './services/compression-event.service'
+import { TrayService } from './services/tray.service'
 import { registerSearchIPC } from './ipc/search.ipc'
 import { registerGraphIPC } from './ipc/graph.ipc'
 import { registerKnowledgeIPC } from './ipc/knowledge.ipc'
@@ -79,6 +80,7 @@ if (is.dev) {
 registerLocalProtocolScheme()
 
 let mainWindow: BrowserWindow | null = null
+let trayService: TrayService | null = null
 let isBootstrapping = false
 
 function focusMainWindow(): void {
@@ -179,6 +181,16 @@ function createWindow(needsOnboarding: boolean): void {
     scheduleDesktopPostWindowInit(() => runDesktopPostWindowInit())
     bindDesktopWindowMcpKeepAlive(mainWindow!)
   })
+
+  // 系统托盘：常驻托盘，关闭按钮默认收进托盘（行为可在托盘右键菜单切换）
+  try {
+    trayService?.destroy()
+    trayService = new TrayService(window, resolvedIcon)
+    void trayService.start()
+  } catch (e) {
+    // 托盘不可用时不应影响主流程
+    console.warn('[TrayService] 初始化托盘失败（非阻塞）:', e)
+  }
 
   mainWindow.webContents.on('did-start-loading', () => {
     markStartup('window.did-start-loading')
@@ -588,6 +600,7 @@ app.whenReady().then(async () => {
 app.on('will-quit', () => {
   const { globalShortcut } = require('electron')
   globalShortcut.unregisterAll()
+  trayService?.destroy()
   void import('./services/mcp-runtime').then(({ shutdownMcpServer }) => shutdownMcpServer())
   void import('./services/session-inbox.store').then(({ flushDesktopSessionInboxStore }) =>
     flushDesktopSessionInboxStore()
